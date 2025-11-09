@@ -1,0 +1,823 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Van Sandbox — Yoke Light Theme</title>
+<style>
+:root{
+  --bg:#ffffff;
+  --panel:#f8fafc;
+  --muted:#6b7280;
+  --accent:#FFB703; /* Yoke-style orange */
+  --accent-dark:#f59e0b;
+  --card-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+  --surface:#ffffff;
+  --grid:#e6e9ee;
+  --text:#0f172a;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
+  background:var(--bg);
+  color:var(--text);
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  overflow:hidden;
+}
+.app{display:flex;gap:12px;height:100vh;padding:12px;box-sizing:border-box;min-width:320px}
+.left{flex:1;display:flex;flex-direction:column;gap:12px;min-width:0}
+.viewer{flex:1;border-radius:12px;background:linear-gradient(180deg,#fbfdff,#f6f9fb);padding:12px;display:flex;flex-direction:column;min-height:340px;overflow:hidden}
+.canvas-wrap{flex:1;border-radius:10px;overflow:hidden;background:var(--surface);min-height:0;display:flex;flex-direction:column}
+canvas{width:100%;height:100%;display:block;touch-action:none}
+.topbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:8px}
+.topbar strong{font-size:16px}
+.controls-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.input{padding:8px;border-radius:8px;border:1px solid #eef2f7;background:#fff}
+.side{width:420px;display:flex;flex-direction:column;gap:12px;min-width:260px}
+.panel{background:var(--panel);border-radius:10px;padding:12px;box-shadow:var(--card-shadow);overflow:auto}
+.unit-row{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px;border:1px solid #f0f3f6;background:#fff}
+.unit-row img{width:72px;height:48px;object-fit:cover;border-radius:6px}
+.zones{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:8px}
+.zone-btn{border:2px dashed #e6eef7;border-radius:8px;padding:10px;text-align:center;background:#fff;cursor:pointer;font-size:13px}
+.small{font-size:13px;color:var(--muted)}
+.big-btn{padding:8px 12px;border-radius:8px;background:var(--accent);color:#0b0b0b;border:none;cursor:pointer;box-shadow:0 6px 12px rgba(255,183,3,0.12)}
+.big-btn.secondary{background:#fff;border:1px solid #e6eef7;color:var(--text)}
+.delete-btn{background:#ef4444;color:#fff;border:none;padding:8px 12px;border-radius:8px;cursor:pointer}
+.footer{font-size:13px;color:var(--muted);text-align:center;padding:6px}
+
+/* bottom control strip inside canvas-wrap */
+.canvas-controls{
+  background:#fff;padding:10px;margin-top:8px;border-radius:8px;border:1px solid #eef2f7;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+}
+
+/* drawer + overlay */
+.drawer-toggle{display:none}
+.overlay{
+  position:fixed; inset:0;background:rgba(2,6,23,0.28);opacity:0;pointer-events:none;transition:opacity 220ms ease;backdrop-filter: blur(2px);
+}
+.overlay.visible{opacity:1;pointer-events:auto}
+.right-drawer{
+  position:fixed; top:0; right:0; height:100vh; width:420px; max-width:96%;
+  background:var(--surface); box-shadow:-20px 0 40px rgba(2,6,23,0.08);
+  transform:translateX(100%); transition:transform 280ms cubic-bezier(.22,.9,.32,1); z-index:1100;
+  border-left:1px solid #eef2f7; overflow:auto; padding:12px;
+}
+.right-drawer.open{ transform:translateX(0); }
+
+/* responsive */
+@media (max-width:900px){
+  .app{flex-direction:column;height:100vh;padding:8px;overflow:hidden}
+  .side{display:none}
+  .drawer-toggle{display:inline-flex;border-radius:8px;background:var(--accent);color:#000;padding:8px 12px;border:none;align-items:center;gap:8px;cursor:pointer}
+  .viewer{padding:8px;height:calc(100vh - 72px)}
+  .canvas-wrap{height:100%}
+  canvas{height:100%}
+}
+
+/* compact table-like spacing tweaks */
+.topbar .input, .topbar select{height:36px}
+.small input[type="number"]{height:36px}
+button,input,select{touch-action:manipulation}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="left">
+    <div class="viewer panel" id="viewerPanel">
+      <div class="topbar">
+        <div style="flex:1;min-width:0">
+          <strong>Van Sandbox</strong>
+          <div class="small">Drop .glb or paste a direct URL. Tap to select modules, drag to move, release to snap.</div>
+        </div>
+
+        <div class="controls-row">
+          <label class="small" style="display:flex;flex-direction:column;min-width:140px">
+            Van
+            <select id="vanSelect" class="input" style="width:160px">
+              <option value="transit">Ford Transit</option>
+              <option value="sprinter">Mercedes Sprinter</option>
+              <option value="crafter">VW Crafter</option>
+              <option value="boxer">Peugeot Boxer</option>
+              <option value="master">Renault Master</option>
+            </select>
+          </label>
+
+          <label class="small" style="display:flex;flex-direction:column;min-width:140px">
+            Trade
+            <select id="tradeSelect" class="input" style="width:160px">
+              <option value="">(None)</option>
+              <option value="plumber">Plumber</option>
+              <option value="electrician">Electrician</option>
+              <option value="tiler">Tiler</option>
+              <option value="carpenter">Carpenter</option>
+            </select>
+          </label>
+
+          <button id="resetBtn" class="big-btn secondary">Reset</button>
+
+          <button id="drawerToggle" class="drawer-toggle" aria-expanded="false" title="Open controls (mobile)">☰ Controls</button>
+        </div>
+      </div>
+
+      <div class="canvas-wrap">
+        <div id="dropzone" style="padding:10px;border-radius:10px;margin-bottom:8px;border:2px dashed #e6eef7;background:#fff" class="small">
+          Drop a .glb here or click to upload — Model: <span id="modelName">(none)</span>
+          <div style="margin-top:8px;display:flex;gap:8px">
+            <input id="urlLoad" placeholder="Paste direct .glb URL" class="input" style="flex:1"/>
+            <button id="loadUrlBtn" class="big-btn">Load</button>
+          </div>
+        </div>
+
+        <canvas id="canvas"></canvas>
+
+        <div class="canvas-controls" aria-hidden="false">
+          <label class="small" style="display:flex;align-items:center;gap:6px"><input id="showFloor" type="checkbox" checked/> Show grid</label>
+          <label class="small" style="display:flex;align-items:center;gap:6px"><input id="vanSeeThrough" type="checkbox" checked/> See-through van</label>
+
+          <div style="flex:1"></div>
+
+          <div class="small" style="display:flex;align-items:center;gap:6px">Anchor nudge (mm)
+            <input id="anchorZ" type="number" class="input" style="width:90px" value="0"/>
+            <button id="applyAnchor" class="big-btn">Apply</button>
+          </div>
+
+          <div class="small" style="display:flex;align-items:center;gap:6px">Scale
+            <input id="scaleVal" type="number" class="input" style="width:90px" value="1" step="0.001"/>
+            <button id="applyScale" class="big-btn">Apply</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footer small">Tip: double-tap (mobile) or double-click (desktop) to focus. Drag modules with finger or mouse.</div>
+  </div>
+
+  <div class="side panel" id="sidePanel">
+    <strong>Storage units</strong>
+    <div id="unitsContainer" style="margin-top:8px"></div>
+
+    <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+      <button id="deleteBtn" class="delete-btn">Delete selected</button>
+      <button id="exportBtn" class="big-btn">Export JSON</button>
+    </div>
+
+    <div style="margin-top:12px" class="panel">
+      <strong>Placement zones</strong>
+      <div class="zones">
+        <div class="zone-btn" data-zone="top-left">Top Left</div>
+        <div class="zone-btn" data-zone="side-left">Side Left</div>
+        <div class="zone-btn" data-zone="bottom-left">Bottom Left</div>
+        <div class="zone-btn" data-zone="top-right">Top Right</div>
+        <div class="zone-btn" data-zone="side-right">Side Right</div>
+        <div class="zone-btn" data-zone="bottom-right">Bottom Right</div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" class="small">Sources: Sketchfab, 3DCADBrowser, RigModels — convert to .glb if needed.</div>
+  </div>
+</div>
+
+<!-- overlay & right drawer -->
+<div id="overlay" class="overlay" aria-hidden="true"></div>
+<div id="rightDrawer" class="right-drawer" aria-hidden="true">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <strong>Controls</strong>
+    <button id="closeDrawer" class="big-btn secondary">Close</button>
+  </div>
+
+  <div style="margin-bottom:8px">
+    <label class="small">Van
+      <select id="vanSelectDrawer" class="input" style="width:100%">
+        <option value="transit">Ford Transit</option><option value="sprinter">Mercedes Sprinter</option><option value="crafter">VW Crafter</option><option value="boxer">Peugeot Boxer</option><option value="master">Renault Master</option>
+      </select>
+    </label>
+  </div>
+
+  <div style="margin-bottom:8px">
+    <label class="small">Trade
+      <select id="tradeSelectDrawer" class="input" style="width:100%">
+        <option value="">(None)</option>
+        <option value="plumber">Plumber</option>
+        <option value="electrician">Electrician</option>
+        <option value="tiler">Tiler</option>
+        <option value="carpenter">Carpenter</option>
+      </select>
+    </label>
+  </div>
+
+  <div style="margin-bottom:12px">
+    <strong>Units</strong>
+    <div id="unitsContainerDrawer" style="margin-top:8px"></div>
+  </div>
+
+  <div class="panel" style="margin-bottom:12px">
+    <strong>Placement zones</strong>
+    <div class="zones" style="margin-top:8px">
+      <div class="zone-btn" data-zone="top-left">Top Left</div>
+      <div class="zone-btn" data-zone="side-left">Side Left</div>
+      <div class="zone-btn" data-zone="bottom-left">Bottom Left</div>
+      <div class="zone-btn" data-zone="top-right">Top Right</div>
+      <div class="zone-btn" data-zone="side-right">Side Right</div>
+      <div class="zone-btn" data-zone="bottom-right">Bottom Right</div>
+    </div>
+  </div>
+
+  <div style="margin-bottom:12px">
+    <strong>Upload GLB</strong>
+    <div style="display:flex;gap:8px;margin-top:6px">
+      <input id="urlLoadDrawer" class="input" placeholder="Paste .glb URL"/>
+      <button id="loadUrlBtnDrawer" class="big-btn">Load</button>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <button id="sheetDeleteBtn" class="delete-btn">Delete selected</button>
+    <button id="sheetExport" class="big-btn">Export JSON</button>
+  </div>
+
+  <div style="margin-bottom:8px">
+    <button id="sheetReset" class="big-btn">Reset</button>
+  </div>
+</div>
+
+<!-- three.js & loaders -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+<script>
+/* Full Yoke-themed sandbox (light + orange accent, subtle grey floor)
+   Keeps all functionality: GLB load, fallback van, trade presets, placement, drag, delete, export
+*/
+
+// ---------- Renderer & scene ----------
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:true, alpha:true });
+renderer.setPixelRatio(window.devicePixelRatio || 1);
+
+function resizeRenderer(){
+  // compute available size from canvas parent
+  const container = canvas.parentElement;
+  const rect = container.getBoundingClientRect();
+  const w = Math.max(300, rect.width);
+  const h = Math.max(200, rect.height);
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', () => { resizeRenderer(); });
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf8fbff);
+
+const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 8000);
+camera.position.set(0, 1200, 1600);
+
+const controls = new THREE.OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.maxPolarAngle = Math.PI;
+controls.screenSpacePanning = false;
+controls.minDistance = 0.1;
+controls.maxDistance = 8000;
+controls.update();
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xaaaaaa, 0.95));
+const dir = new THREE.DirectionalLight(0xffffff, 0.85); dir.position.set(400, 800, 300); scene.add(dir);
+
+// visual scale helper (mm -> world)
+const VISUAL_SCALE = 0.6;
+function mm(v){ return v * VISUAL_SCALE; }
+
+// subtle grey grid floor
+const gridMat = new THREE.LineBasicMaterial({ color: 0xdfe6ee });
+function makeGrid(w,h,step){
+  const geom = new THREE.BufferGeometry();
+  const verts = [];
+  for(let x=-w/2;x<=w/2;x+=step) verts.push(x,0,-h/2, x,0,h/2);
+  for(let z=-h/2;z<=h/2;z+=step) verts.push(-w/2,0,z, w/2,0,z);
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(verts,3));
+  return new THREE.LineSegments(geom, gridMat);
+}
+const floorGroup = new THREE.Group();
+const gridMesh = makeGrid(4000*VISUAL_SCALE, 6000*VISUAL_SCALE, 200*VISUAL_SCALE);
+floorGroup.add(gridMesh);
+scene.add(floorGroup);
+
+// wood texture for modules
+function makeWoodTexture(){
+  const c=document.createElement('canvas'); c.width=512; c.height=512; const ctx=c.getContext('2d');
+  ctx.fillStyle='#E6CBA8'; ctx.fillRect(0,0,512,512);
+  ctx.strokeStyle='rgba(140,95,50,0.12)';
+  for(let y=0;y<512;y+=6){ ctx.beginPath(); ctx.moveTo(0,y+Math.sin(y/8)*2); ctx.quadraticCurveTo(256,y+(Math.random()-0.5)*2,512,y+Math.sin(y/9)*2); ctx.stroke(); }
+  return new THREE.CanvasTexture(c);
+}
+const woodTexture = makeWoodTexture();
+
+// ---------- presets & modules ----------
+const VANS = {
+  transit:  { name:'Ford Transit', inner:{w:1700,l:3500,h:1800}, color:0xEFF6FF },
+  sprinter: { name:'Mercedes Sprinter', inner:{w:1787,l:4410,h:2243}, color:0xFFF7E6 },
+  crafter:  { name:'VW Crafter', inner:{w:1800,l:3400,h:1900}, color:0xFFEEF2 },
+  boxer:    { name:'Peugeot Boxer', inner:{w:1680,l:3300,h:1750}, color:0xF0F9F6 },
+  master:   { name:'Renault Master', inner:{w:1700,l:3450,h:1800}, color:0xFFF8F0 }
+};
+
+const MODULES = [
+  { id:'tool', name:'Tool Chest', type:'toolChest', w:600, d:400, h:400 },
+  { id:'draw', name:'Drawer Bank', type:'drawerBank', w:1000, d:450, h:600 },
+  { id:'slant', name:'Slanted Shelf', type:'slantedShelf', w:1000, d:320, h:1400 },
+  { id:'euro', name:'Euro Bay', type:'euroBay', w:900, d:350, h:800 },
+  { id:'tube', name:'Tube Holder', type:'tubeHolder', w:1000, d:300, h:500 },
+  { id:'org', name:'Organiser Slim', type:'organiserSlim', w:350, d:220, h:1000 }
+];
+
+function svgThumb(text){ return 'data:image/svg+xml;utf8,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="160"><rect width="100%" height="100%" fill="#fff7ed"/><text x="12" y="88" font-size="18" fill="#333">${text}</text></svg>`); }
+MODULES.forEach(m => m.thumb = svgThumb(m.name));
+
+// ---------- UI lists ----------
+const unitsContainer = document.getElementById('unitsContainer');
+const unitsContainerDrawer = document.getElementById('unitsContainerDrawer');
+let selectedModulePreset = null;
+function populateUnits(){
+  unitsContainer.innerHTML = '';
+  unitsContainerDrawer.innerHTML = '';
+  MODULES.forEach(m=>{
+    const row = document.createElement('div'); row.className='unit-row';
+    row.innerHTML = `<img src="${m.thumb}"><div style="flex:1"><div style="font-weight:600">${m.name}</div><div class="small">${m.w}×${m.d}×${m.h} mm</div></div><button class="big-btn">Select</button>`;
+    row.querySelector('button').addEventListener('click', ()=>{ selectedModulePreset = m; [...unitsContainer.querySelectorAll('.unit-row')].forEach(r=>r.style.borderColor='#f0f3f6'); row.style.borderColor='rgba(255,183,3,0.22)'; });
+    unitsContainer.appendChild(row);
+    const copy = row.cloneNode(true);
+    copy.querySelector('button').addEventListener('click', ()=>{ selectedModulePreset = m; [...unitsContainerDrawer.querySelectorAll('.unit-row')].forEach(r=>r.style.borderColor='#f0f3f6'); copy.style.borderColor='rgba(255,183,3,0.22)'; });
+    unitsContainerDrawer.appendChild(copy);
+  });
+}
+populateUnits();
+
+// ---------- GLB loader & fallback van ----------
+const gltfLoader = new THREE.GLTFLoader();
+let currentVan = null, interiorBox = null, anchors = {}, placed = [];
+
+function cloneMaterial(mesh){
+  if(mesh.material && mesh.material.isMaterial) mesh.material = mesh.material.clone();
+}
+
+function createFallbackVan(key){
+  placed.forEach(p=>scene.remove(p)); placed.length = 0;
+  if(currentVan){ scene.remove(currentVan); currentVan = null; }
+  const spec = VANS[key];
+  const w = mm(spec.inner.w), l = mm(spec.inner.l), h = mm(spec.inner.h);
+  const g = new THREE.Group();
+  const shell = new THREE.Mesh(new THREE.BoxGeometry(w+mm(40), h+mm(40), l+mm(40)), new THREE.MeshStandardMaterial({ color: spec.color, transparent:true, opacity:0.16, side:THREE.DoubleSide }));
+  shell.position.y = (h+mm(40))/2; g.add(shell);
+  const floor = new THREE.Mesh(new THREE.BoxGeometry(w, 8, l), new THREE.MeshStandardMaterial({ color:0xf6f8fb }));
+  floor.position.y = 4; g.add(floor);
+  scene.add(g); currentVan = g;
+  interiorBox = new THREE.Box3(new THREE.Vector3(-w/2, 0, -l/2), new THREE.Vector3(w/2, h, l/2));
+  computeAnchorsFromInner(spec.inner);
+  updateAnchorMarkers();
+  fitCameraToBox(interiorBox);
+  document.getElementById('modelName').textContent = spec.name + ' (preset)';
+}
+
+function loadGLB(url, name){
+  document.getElementById('modelName').textContent = 'loading…';
+  if(currentVan){ scene.remove(currentVan); currentVan = null; }
+  gltfLoader.load(url, gltf=>{
+    currentVan = gltf.scene;
+    scene.add(currentVan);
+    currentVan.traverse(child=>{
+      if(child.isMesh){
+        cloneMaterial(child);
+        child.material.transparent = true;
+        child.material.opacity = document.getElementById('vanSeeThrough').checked ? 0.25 : 1.0;
+        child.material.depthWrite = false;
+        child.material.side = THREE.DoubleSide;
+      }
+    });
+    currentVan.rotation.set(0,0,0); currentVan.position.set(0,0,0); currentVan.scale.set(1,1,1);
+    const box0 = new THREE.Box3().setFromObject(currentVan);
+    const size0 = new THREE.Vector3(); box0.getSize(size0);
+    if(size0.length() === 0 || !isFinite(size0.x)){ alert('Model appears empty or malformed.'); createFallbackVan(document.getElementById('vanSelect').value); return; }
+    const center0 = new THREE.Vector3(); box0.getCenter(center0);
+    currentVan.position.sub(center0);
+    const targetLength = mm(4200);
+    const autoScale = targetLength / size0.z;
+    currentVan.scale.setScalar(autoScale);
+    const box1 = new THREE.Box3().setFromObject(currentVan);
+    const minY = box1.min.y;
+    currentVan.position.y -= minY;
+    currentVan.position.y += mm(10);
+    const box = new THREE.Box3().setFromObject(currentVan);
+    const shrink = mm(40);
+    interiorBox = new THREE.Box3(new THREE.Vector3(box.min.x + shrink, 0, box.min.z + shrink), new THREE.Vector3(box.max.x - shrink, box.max.y - box.min.y - shrink, box.max.z - shrink));
+    computeAnchorsFromBox(box);
+    updateAnchorMarkers();
+    fitCameraToBox(box);
+    document.getElementById('modelName').textContent = name || '(glb)';
+  }, xhr=>{}, err=>{
+    console.error('GLB load error', err);
+    alert('Failed to load GLB (CORS or invalid file). Try downloading and re-exporting as .glb.');
+    createFallbackVan(document.getElementById('vanSelect').value);
+  });
+}
+
+function computeAnchorsFromInner(inner){
+  const w = mm(inner.w), l = mm(inner.l), h = mm(inner.h);
+  anchors = { sideLeft: [], sideRight: [] };
+  anchors['top-left'] = new THREE.Vector3(-w/2 + mm(100), mm(10), -l/2 + mm(150));
+  anchors['top-right'] = new THREE.Vector3(w/2 - mm(100), mm(10), -l/2 + mm(150));
+  anchors['bottom-left'] = new THREE.Vector3(-w/2 + mm(100), mm(10), l/2 - mm(150));
+  anchors['bottom-right'] = new THREE.Vector3(w/2 - mm(100), mm(10), l/2 - mm(150));
+  const steps = 6;
+  for(let i=0;i<steps;i++){
+    const z = -l/2 + mm(150) + i * ((l - mm(300)) / (steps - 1));
+    anchors.sideLeft.push(new THREE.Vector3(-w/2 + mm(20), mm(10), z));
+    anchors.sideRight.push(new THREE.Vector3(w/2 - mm(20), mm(10), z));
+  }
+}
+function computeAnchorsFromBox(box){
+  anchors = { sideLeft: [], sideRight: [] };
+  const w = box.max.x - box.min.x, l = box.max.z - box.min.z;
+  anchors['top-left'] = new THREE.Vector3(box.min.x + mm(100), box.min.y + 10, box.min.z + mm(150));
+  anchors['top-right'] = new THREE.Vector3(box.max.x - mm(100), box.min.y + 10, box.min.z + mm(150));
+  anchors['bottom-left'] = new THREE.Vector3(box.min.x + mm(100), box.min.y + 10, box.max.z - mm(150));
+  anchors['bottom-right'] = new THREE.Vector3(box.max.x - mm(100), box.min.y + 10, box.max.z - mm(150));
+  const steps = 6;
+  for(let i=0;i<steps;i++){
+    const z = box.min.z + mm(150) + i * ((l - mm(300)) / (steps - 1));
+    anchors.sideLeft.push(new THREE.Vector3(box.min.x + mm(20), box.min.y + 10, z));
+    anchors.sideRight.push(new THREE.Vector3(box.max.x - mm(20), box.min.y + 10, z));
+  }
+}
+
+// anchor markers
+let anchorMarkers = new THREE.Group(); scene.add(anchorMarkers);
+function updateAnchorMarkers(){
+  scene.remove(anchorMarkers);
+  anchorMarkers = new THREE.Group();
+  const mat = new THREE.MeshBasicMaterial({ color: 0x253244 });
+  const cone = new THREE.ConeGeometry(mm(12), mm(28), 8);
+  ['top-left','top-right','bottom-left','bottom-right'].forEach(k=>{
+    if(anchors[k]){
+      const m = new THREE.Mesh(cone, mat);
+      m.rotation.x = -Math.PI/2;
+      m.position.copy(anchors[k]);
+      m.position.y += 12;
+      anchorMarkers.add(m);
+    }
+  });
+  (anchors.sideLeft || []).forEach(p=>{ const s = new THREE.Mesh(new THREE.SphereGeometry(mm(6),8,8), mat.clone()); s.position.copy(p); s.position.y += 12; anchorMarkers.add(s); });
+  (anchors.sideRight || []).forEach(p=>{ const s = new THREE.Mesh(new THREE.SphereGeometry(mm(6),8,8), mat.clone()); s.position.copy(p); s.position.y += 12; anchorMarkers.add(s); });
+  scene.add(anchorMarkers);
+}
+
+// ---------- modules factory ----------
+function makeModuleMesh(meta){
+  const w = mm(meta.w), d = mm(meta.d), h = mm(meta.h);
+  const mat = new THREE.MeshStandardMaterial({ map: woodTexture, metalness:0.05, roughness:0.75 });
+  if(meta.type === 'toolChest') return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  if(meta.type === 'drawerBank'){
+    const g = new THREE.Group(); const parts = 3;
+    for(let i=0;i<parts;i++){ const seg = h/parts; const box = new THREE.Mesh(new THREE.BoxGeometry(w, seg-6, d-6), mat); box.position.y = -h/2 + (i+0.5)*seg; g.add(box); }
+    return g;
+  }
+  if(meta.type === 'slantedShelf'){
+    const g = new THREE.Group(); const shelves = Math.max(2, Math.floor(h / mm(300)));
+    for(let i=0;i<shelves;i++){ const ty = -h/2 + (i+0.5)*(h/shelves); const dep = d - mm(20) - i*mm(8); const s = new THREE.Mesh(new THREE.BoxGeometry(w, 8, dep), mat); s.position.set(0, ty, -(d - dep)/2); s.rotation.x = -0.35; g.add(s); }
+    g.add(new THREE.Mesh(new THREE.BoxGeometry(w, 16, d), mat)); return g;
+  }
+  if(meta.type === 'euroBay'){
+    const g = new THREE.Group(); const bayW = mm(300); const cols = Math.max(1, Math.floor(w / bayW)); const colW = w/cols; const rows = Math.max(1, Math.floor(h / mm(200)));
+    for(let c=0;c<cols;c++) for(let r=0;r<rows;r++){ const bw = colW - mm(10); const bh = h/rows - mm(10); const box = new THREE.Mesh(new THREE.BoxGeometry(bw, bh, d-mm(30)), mat); box.position.set(-w/2 + (c+0.5)*colW, -h/2 + (r+0.5)*(h/rows), 0); g.add(box); }
+    return g;
+  }
+  if(meta.type === 'tubeHolder'){ const g = new THREE.Group(); const base = new THREE.Mesh(new THREE.BoxGeometry(w,20,d-20), mat); base.position.y = -h/2 + 40; g.add(base); g.add(new THREE.Mesh(new THREE.BoxGeometry(w,h-80,12), mat)); return g; }
+  if(meta.type === 'organiserSlim'){ const g = new THREE.Group(); const levels = Math.max(3, Math.floor(h / mm(250))); for(let i=0;i<levels;i++){ const shelf = new THREE.Mesh(new THREE.BoxGeometry(w,8,d-mm(20)), mat); shelf.position.y = -h/2 + (i+0.5)*(h/levels); g.add(shelf); const lip = new THREE.Mesh(new THREE.BoxGeometry(w,20,6), mat); lip.position.set(0, shelf.position.y + 6, d/2 - 6); g.add(lip); } return g; }
+  return new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+}
+
+// ---------- placement engine ----------
+function clampPosition(pos, halfW, halfD){
+  if(!interiorBox) return;
+  pos.x = THREE.Math.clamp(pos.x, interiorBox.min.x + halfW, interiorBox.max.x - halfW);
+  pos.z = THREE.Math.clamp(pos.z, interiorBox.min.z + halfD, interiorBox.max.z - halfD);
+}
+function findNearestAnchor(pos){
+  let best = null;
+  const keys = ['top-left','top-right','bottom-left','bottom-right'];
+  keys.forEach(k => { if(anchors[k]){ const d = pos.distanceTo(anchors[k]); if(!best || d < best.distance) best = { key:k, point:anchors[k].clone(), distance:d }; }});
+  (anchors.sideLeft||[]).forEach((p,i)=>{ const d = pos.distanceTo(p); if(!best || d < best.distance) best = { key:'side-left', point:p.clone(), distance:d, index:i }; });
+  (anchors.sideRight||[]).forEach((p,i)=>{ const d = pos.distanceTo(p); if(!best || d < best.distance) best = { key:'side-right', point:p.clone(), distance:d, index:i }; });
+  return best;
+}
+function snapOrClamp(mesh){
+  const SNAP_THRESHOLD = mm(250);
+  const meta = mesh.userData.meta;
+  const halfW = meta ? mm(meta.w)/2 : 100, halfD = meta ? mm(meta.d)/2 : 100;
+  const cand = findNearestAnchor(mesh.position);
+  if(cand && cand.distance <= SNAP_THRESHOLD){
+    mesh.position.copy(cand.point);
+    if(cand.key === 'side-left') mesh.position.x += halfD;
+    if(cand.key === 'side-right') mesh.position.x -= halfD;
+  } else {
+    clampPosition(mesh.position, halfW, halfD);
+  }
+  const h = meta ? mm(meta.h) : mm(400);
+  mesh.position.y = h/2 + mm(40);
+}
+
+function placeModule(meta, zone){
+  const mesh = makeModuleMesh(meta);
+  mesh.userData = { meta, zone };
+  mesh._uid = Math.random().toString(36).slice(2,9);
+  mesh.name = meta.id || meta.name || mesh._uid;
+  const halfW = mm(meta.w)/2, halfD = mm(meta.d)/2, h = mm(meta.h);
+  let p = new THREE.Vector3(0, h/2 + mm(40), 0);
+  if(anchors[zone]) p = anchors[zone].clone();
+  if(zone === 'side-left' || zone === 'side-right'){
+    const arr = zone === 'side-left' ? anchors.sideLeft : anchors.sideRight;
+    p = arr[Math.floor(Math.random()*arr.length)].clone();
+    if(zone === 'side-left'){ p.x += halfD; mesh.rotation.y = Math.PI/2; }
+    else { p.x -= halfD; mesh.rotation.y = -Math.PI/2; }
+  }
+  p.y = h/2 + mm(40);
+  clampPosition(p, halfW, halfD);
+  mesh.position.copy(p);
+  scene.add(mesh);
+  placed.push(mesh);
+  return mesh;
+}
+
+// zone wiring
+document.querySelectorAll('.zone-btn').forEach(btn=>{
+  btn.addEventListener('click', ()=> {
+    if(!selectedModulePreset) return alert('Select a unit first');
+    placeModule(selectedModulePreset, btn.dataset.zone);
+  });
+});
+
+// trade presets
+function applyTradePreset(key){
+  placed.forEach(m=>scene.remove(m)); placed.length = 0;
+  if(!key) return;
+  const M = id => MODULES.find(x=>x.id === id);
+  if(key === 'plumber'){ placeModule(M('slant'),'side-left'); placeModule(M('euro'),'side-left'); placeModule(M('draw'),'bottom-left'); placeModule(M('tube'),'bottom-right'); }
+  if(key === 'electrician'){ placeModule(M('org'),'side-right'); placeModule(M('org'),'side-right'); placeModule(M('euro'),'side-left'); placeModule(M('tool'),'top-left'); }
+  if(key === 'tiler'){ placeModule(M('slant'),'side-left'); placeModule(M('draw'),'bottom-left'); }
+  if(key === 'carpenter'){ anchors.sideLeft.forEach((_,i)=>{ if(i%2===0) placeModule(M('tube'),'side-left'); }); placeModule(M('draw'),'bottom-left'); }
+}
+document.getElementById('tradeSelect').addEventListener('change', e => applyTradePreset(e.target.value));
+document.getElementById('tradeSelectDrawer').addEventListener('change', e => { document.getElementById('tradeSelect').value = e.target.value; applyTradePreset(e.target.value); });
+
+// selection / highlight / delete
+let selectedMesh = null;
+function highlightModule(mesh, on){
+  if(!mesh) return;
+  mesh.traverse(child=>{
+    if(child.isMesh && child.material){
+      if(on){
+        if(!child.userData._origEmissive) child.userData._origEmissive = child.material.emissive ? child.material.emissive.clone() : new THREE.Color(0x000000);
+        child.material.emissive = child.material.emissive || new THREE.Color(0x000000);
+        child.material.emissive.set(0xffb703);
+        child.material.emissiveIntensity = 0.9;
+      } else {
+        if(child.userData._origEmissive) child.material.emissive.copy(child.userData._origEmissive);
+        else child.material.emissiveIntensity = 0;
+      }
+    }
+  });
+}
+function selectMesh(mesh){
+  if(selectedMesh && selectedMesh !== mesh) highlightModule(selectedMesh, false);
+  selectedMesh = mesh;
+  if(mesh) highlightModule(mesh, true);
+}
+document.getElementById('deleteBtn').addEventListener('click', ()=>{
+  if(!selectedMesh) { alert('No module selected'); return; }
+  scene.remove(selectedMesh);
+  placed = placed.filter(p => p !== selectedMesh);
+  selectedMesh = null;
+});
+document.getElementById('sheetDeleteBtn').addEventListener('click', ()=> document.getElementById('deleteBtn').click());
+
+// raycast, drag and focus
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let dragInfo = null;
+let lastTap = 0;
+
+function smoothFocus(point){
+  const start = controls.target.clone();
+  const end = point.clone();
+  const distance = camera.position.distanceTo(point);
+  const duration = Math.min(700, Math.max(220, distance * 0.12));
+  const startTime = performance.now();
+  (function anim(now){
+    const t = Math.min(1, (now - startTime) / duration);
+    const ease = 1 - Math.pow(1 - t, 3);
+    controls.target.lerpVectors(start, end, ease);
+    controls.update();
+    if(t < 1) requestAnimationFrame(anim);
+  })(performance.now());
+}
+
+function findPlacedFromObject(obj){
+  let cur = obj;
+  while(cur){
+    if(placed.includes(cur)) return cur;
+    for(const p of placed) if(p.children && p.children.includes(cur)) return p;
+    cur = cur.parent;
+  }
+  return null;
+}
+
+canvas.addEventListener('pointerdown', (ev) => {
+  if(ev.pointerType === 'mouse' && ev.button !== 0) return;
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObjects(scene.children, true);
+  if(hits.length > 0){
+    const pickedPlaced = findPlacedFromObject(hits[0].object);
+    if(pickedPlaced){
+      selectMesh(pickedPlaced);
+      const plane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+      const intersection = new THREE.Vector3();
+      raycaster.ray.intersectPlane(plane, intersection);
+      dragInfo = { mesh: pickedPlaced, offset: intersection.clone().sub(pickedPlaced.position), plane };
+      controls.enabled = false;
+      return;
+    } else {
+      if(selectedMesh) selectMesh(null);
+      smoothFocus(hits[0].point);
+    }
+  } else {
+    if(selectedMesh) selectMesh(null);
+  }
+});
+
+canvas.addEventListener('pointermove', (ev)=>{
+  if(!dragInfo) return;
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+  raycaster.setFromCamera(mouse, camera);
+  const intersection = new THREE.Vector3();
+  if(raycaster.ray.intersectPlane(dragInfo.plane, intersection)){
+    const newPos = intersection.clone().sub(dragInfo.offset);
+    dragInfo.mesh.position.x = newPos.x;
+    dragInfo.mesh.position.z = newPos.z;
+    const mh = dragInfo.mesh.userData.meta ? mm(dragInfo.mesh.userData.meta.h) : mm(400);
+    dragInfo.mesh.position.y = mh/2 + mm(40);
+  }
+});
+
+canvas.addEventListener('pointerup', (ev)=>{
+  if(dragInfo){
+    snapOrClamp(dragInfo.mesh);
+    dragInfo = null;
+    controls.enabled = true;
+  } else {
+    const now = performance.now();
+    if(now - lastTap < 350){
+      const rect = canvas.getBoundingClientRect();
+      const x = ((ev.clientX - rect.left) / rect.width) * 2 - 1;
+      const y = -((ev.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(new THREE.Vector2(x,y), camera);
+      const hits = raycaster.intersectObjects(scene.children, true);
+      if(hits.length) smoothFocus(hits[0].point);
+    }
+    lastTap = now;
+  }
+});
+
+// UI events: GLB load, van select, reset, export
+document.getElementById('loadUrlBtn').addEventListener('click', ()=>{
+  const url = document.getElementById('urlLoad').value.trim();
+  if(!url) return alert('Paste a direct .glb URL');
+  loadGLB(url, url.split('/').pop());
+});
+document.getElementById('loadUrlBtnDrawer').addEventListener('click', ()=>{
+  const url = document.getElementById('urlLoadDrawer').value.trim();
+  if(!url) return alert('Paste a direct .glb URL');
+  loadGLB(url, url.split('/').pop()); closeDrawer();
+});
+
+document.getElementById('vanSelect').addEventListener('change', (e)=> { createFallbackVan(e.target.value); document.getElementById('vanSelectDrawer').value = e.target.value; });
+document.getElementById('vanSelectDrawer').addEventListener('change', (e)=> { createFallbackVan(e.target.value); document.getElementById('vanSelect').value = e.target.value; });
+
+document.getElementById('resetBtn').addEventListener('click', ()=> createFallbackVan(document.getElementById('vanSelect').value));
+document.getElementById('sheetReset').addEventListener('click', ()=> { createFallbackVan(document.getElementById('vanSelectDrawer').value); closeDrawer(); });
+
+document.getElementById('applyAnchor').addEventListener('click', ()=>{
+  const off = Number(document.getElementById('anchorZ').value) || 0;
+  if(!(anchors.sideLeft && anchors.sideLeft.length)) return alert('No anchors present yet');
+  anchors.sideLeft.forEach(p=> p.z += mm(off));
+  anchors.sideRight.forEach(p=> p.z += mm(off));
+  placed.forEach(m => {
+    const zone = (m.userData.zone || '');
+    if(zone.includes('side') || zone.includes('top') || zone.includes('bottom')) m.position.z += mm(off);
+  });
+  updateAnchorMarkers();
+});
+
+document.getElementById('applyScale').addEventListener('click', ()=>{
+  const s = Math.max(0.0001, Math.min(10, parseFloat(document.getElementById('scaleVal').value) || 1));
+  if(!currentVan) return alert('Load a GLB or choose a preset van first');
+  currentVan.scale.set(s,s,s);
+  const box = new THREE.Box3().setFromObject(currentVan);
+  const shrink = mm(40);
+  interiorBox = new THREE.Box3(new THREE.Vector3(box.min.x + shrink, 0, box.min.z + shrink), new THREE.Vector3(box.max.x - shrink, box.max.y - box.min.y - shrink, box.max.z - shrink));
+  computeAnchorsFromBox(box);
+  updateAnchorMarkers();
+  fitCameraToBox(box);
+});
+
+document.getElementById('vanSeeThrough').addEventListener('change', (e)=>{
+  const on = e.target.checked;
+  if(!currentVan) return;
+  currentVan.traverse(child => {
+    if(child.isMesh && child.material){
+      child.material.opacity = on ? 0.25 : 1.0;
+      child.material.transparent = on;
+      child.material.depthWrite = !on;
+    }
+  });
+});
+
+document.getElementById('sheetExport').addEventListener('click', ()=> document.getElementById('exportBtn').click());
+document.getElementById('sheetDeleteBtn').addEventListener('click', ()=> document.getElementById('deleteBtn').click());
+
+document.getElementById('exportBtn').addEventListener('click', ()=> {
+  const out = placed.map(m => {
+    const meta = m.userData.meta; return {
+      id: meta.id||null, name: meta.name||null, zone: m.userData.zone||null,
+      dims_mm: { w: meta.w, d: meta.d, h: meta.h },
+      pos_mm: { x: Math.round(m.position.x / VISUAL_SCALE), y: Math.round(m.position.y / VISUAL_SCALE), z: Math.round(m.position.z / VISUAL_SCALE) }
+    };
+  });
+  const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'layout.json'; a.click();
+});
+
+// drag/drop UI
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover', (e)=>{ e.preventDefault(); dropzone.style.background='#fffef6'; });
+dropzone.addEventListener('dragleave', ()=>{ dropzone.style.background=''; });
+dropzone.addEventListener('drop', (e)=>{ e.preventDefault(); dropzone.style.background=''; const f = e.dataTransfer.files[0]; if(f) loadGLB(URL.createObjectURL(f), f.name); });
+dropzone.addEventListener('click', ()=>{ const inp = document.createElement('input'); inp.type='file'; inp.accept='.glb'; inp.onchange = ()=>{ if(inp.files[0]) loadGLB(URL.createObjectURL(inp.files[0]), inp.files[0].name); }; inp.click(); });
+
+// camera fit
+function fitCameraToBox(box){
+  const size = new THREE.Vector3(); box.getSize(size);
+  const maxDim = Math.max(size.x, size.y, size.z);
+  camera.position.set(0, maxDim * 0.9, maxDim * 1.2);
+  controls.target.set((box.min.x + box.max.x)/2, size.y * 0.28, (box.min.z + box.max.z)/2);
+  controls.update();
+}
+
+// initial
+createFallbackVan('transit');
+
+// render loop
+function animate(){ requestAnimationFrame(animate); controls.update(); renderer.render(scene, camera); }
+animate();
+resizeRenderer(); // initial resize
+
+// drawer logic
+const drawerToggle = document.getElementById('drawerToggle');
+const rightDrawer = document.getElementById('rightDrawer');
+const overlay = document.getElementById('overlay');
+const closeDrawerBtn = document.getElementById('closeDrawer');
+
+function openDrawer(){
+  rightDrawer.classList.add('open');
+  overlay.classList.add('visible');
+  rightDrawer.setAttribute('aria-hidden','false');
+  overlay.setAttribute('aria-hidden','false');
+  drawerToggle.setAttribute('aria-expanded','true');
+  document.getElementById('vanSelectDrawer').value = document.getElementById('vanSelect').value;
+  document.getElementById('tradeSelectDrawer').value = document.getElementById('tradeSelect').value;
+  setTimeout(()=>{ resizeRenderer(); controls.update(); }, 180);
+}
+function closeDrawer(){
+  rightDrawer.classList.remove('open');
+  overlay.classList.remove('visible');
+  rightDrawer.setAttribute('aria-hidden','true');
+  overlay.setAttribute('aria-hidden','true');
+  drawerToggle.setAttribute('aria-expanded','false');
+  setTimeout(()=>{ resizeRenderer(); controls.update(); }, 220);
+}
+drawerToggle.addEventListener('click', openDrawer);
+closeDrawerBtn.addEventListener('click', closeDrawer);
+overlay.addEventListener('click', closeDrawer);
+document.addEventListener('keydown', (e)=>{ if(e.key === 'Escape') closeDrawer(); });
+
+</script>
+</body>
+</html>
